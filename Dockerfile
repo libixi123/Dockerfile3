@@ -1,19 +1,59 @@
-FROM debian
-RUN apt update
-RUN DEBIAN_FRONTEND=noninteractive apt install qemu-kvm *zenhei* xz-utils dbus-x11 curl firefox-esr gnome-system-monitor mate-system-monitor  git xfce4 xfce4-terminal tightvncserver wget   -y
-RUN wget https://github.com/novnc/noVNC/archive/refs/tags/v1.2.0.tar.gz
-RUN curl -LO https://proot.gitlab.io/proot/bin/proot
-RUN chmod 755 proot
-RUN mv proot /bin
-RUN tar -xvf v1.2.0.tar.gz
-RUN mkdir  $HOME/.vnc
-RUN echo 'luo' | vncpasswd -f > $HOME/.vnc/passwd
-RUN chmod 600 $HOME/.vnc/passwd
-RUN echo 'whoami ' >>/luo.sh
-RUN echo 'cd ' >>/luo.sh
-RUN echo "su -l -c  'vncserver :2000 -geometry 1280x800' "  >>/luo.sh
-RUN echo 'cd /noVNC-1.2.0' >>/luo.sh
-RUN echo './utils/launch.sh  --vnc localhost:7900 --listen 8900 ' >>/luo.sh
-RUN chmod 755 /luo.sh
-EXPOSE 8900
-CMD  /luo.sh
+# Run Chrome in a container
+#
+# docker run -it \
+#	--net host \ # may as well YOLO
+#	--cpuset-cpus 0 \ # control the cpu
+#	--memory 512mb \ # max memory it can use
+#	-v /tmp/.X11-unix:/tmp/.X11-unix \ # mount the X11 socket
+#	-e DISPLAY=unix$DISPLAY \
+#	-v $HOME/Downloads:/home/chrome/Downloads \
+#	-v $HOME/.config/google-chrome/:/data \ # if you want to save state
+#	--security-opt seccomp=$HOME/chrome.json \
+#	--device /dev/snd \ # so we have sound
+#   --device /dev/dri \
+#	-v /dev/shm:/dev/shm \
+#	--name chrome \
+#	jess/chrome
+#
+# You will want the custom seccomp profile:
+# 	wget https://raw.githubusercontent.com/jfrazelle/dotfiles/master/etc/docker/seccomp/chrome.json -O ~/chrome.json
+
+# Base docker image
+FROM debian:bullseye-slim
+LABEL maintainer "Jessie Frazelle <jess@linux.com>"
+
+# Install Chrome
+RUN apt-get update && apt-get install -y \
+	apt-transport-https \
+	ca-certificates \
+	curl \
+	gnupg \
+	hicolor-icon-theme \
+	libcanberra-gtk* \
+	libgl1-mesa-dri \
+	libgl1-mesa-glx \
+	libpangox-1.0-0 \
+	libpulse0 \
+	libv4l-0 \
+	fonts-symbola \
+	--no-install-recommends \
+	&& curl -sSL https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
+	&& echo "deb [arch=amd64] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google.list \
+	&& apt-get update && apt-get install -y \
+	google-chrome-stable \
+	--no-install-recommends \
+	&& apt-get purge --auto-remove -y curl \
+	&& rm -rf /var/lib/apt/lists/*
+
+# Add chrome user
+RUN groupadd -r chrome && useradd -r -g chrome -G audio,video chrome \
+    && mkdir -p /home/chrome/Downloads && chown -R chrome:chrome /home/chrome
+
+COPY local.conf /etc/fonts/local.conf
+
+# Run Chrome as non privileged user
+USER chrome
+
+# Autorun chrome
+ENTRYPOINT [ "google-chrome" ]
+CMD [ "--user-data-dir=/data" ]
